@@ -2,7 +2,6 @@
 # written by Chris Tanner
 
 # converts eugene's file format to MALLET format
-
 if __name__ == "__main__":
 	input = "../data/news1000.txt"
 	output = "../data/news1000-mallet.txt"
