@@ -4,6 +4,8 @@ from random import choice, random
 from sys import argv
 import numpy as np
 import math
+import os
+import sys
 
 def setRandomTopicsPerWordToken():
 	print "running PLSA with: \n\titerations: "+ str(iterations) + "\n\talpha: " + str(alpha) + "\n\t# topics: " + str(len(topics))
@@ -27,7 +29,6 @@ def TopicToVec():
 		if (len(tokens) > 0):
 			word = tokens[0]
 			wordVecs[word] = np.array(map(float, tokens[1:]))
-	print "loaded " + str(len(wordVecs.keys())) + " word vecs"
 
 	ndt = defaultdict(lambda: 0)
 	ndo = defaultdict(lambda: 0)
@@ -56,10 +57,18 @@ def TopicToVec():
 			mixtureVecs[j[1]] = curVecs
 			words.add(j[0])
 
+	print "# words in docs: " + str(len(words))
+	# remove unnecessary wordVecs (ones not used in the doc)
+	print "loaded " + str(len(wordVecs.keys())) + " word vecs"
+	for w in wordVecs.keys():
+		if w not in words:
+			del wordVecs[w]
+
+	print "loaded " + str(len(wordVecs.keys())) + " word vecs"
 	
 	# calculates initial covs and means for each k-mixtures
 	print "* calculating initial cov matrix and mean vectors for each of the k mixtures..."
-	for k in range(50):
+	for k in range(len(topics)):
 		x = np.array(mixtureVecs[k]).T
 		mixtureCovs[k] = np.cov(x)
 		print "# cov " + str(len(mixtureCovs[k]))
@@ -80,9 +89,11 @@ def TopicToVec():
 
 	# Functions for computing P(t,d) and P(w,t)
 	ptd = lambda t, d: float(ndt[(d, t)] + alpha) / float(ndo[d] + alpha * ntopics)
-	pwt = lambda w, t: float(1.0)
-	#pwt = lambda w, t: float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*np.linalg.det(mixtureCovs[t]))) # * math.exp(-0.5 * np.dot(np.dot((wordVec[w] - mixtureMeans[t]),np.linalg.inv(mixtureCovs[t])),(wordVec[w] - mixtureMeans[t])))
-	diff = lambda w, t: float(wordVec[w] - mixtureMeans[t])
+
+
+	pwt = lambda w, t: float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*(np.float64(np.exp(np.linalg.slogdet(mixtureCovs[t])[1]))+0.000001))) * math.exp(-0.5 * np.dot(np.dot((wordVecs[w] - mixtureMeans[t]),np.linalg.inv(mixtureCovs[t])),(wordVecs[w] - mixtureMeans[t])))
+	diff = lambda w, t: float(np.linalg.norm(wordVecs[w] - mixtureMeans[t]))
+
 	#pwt = lambda w, t: float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*np.linalg.det(mixtureCovs[t]))) # * float(math.exp(-0.5* (np.subtract(x - mixtureVecs[t]).T) * np.linalg.inv(mixtureCovs[t]) * (np.substract(x - mixtureVecs[t]))))
 
 	for _ in range(iterations):
@@ -121,27 +132,38 @@ def TopicToVec():
 				# print "cov now: " + str(mixtureCovs[curTopic])
 				# print "mean now: " + str(mixtureMeans[curTopic])
 
-				#a = float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*np.linalg.det(mixtureCovs[curTopic])))
-				# print "a: " + str(a)
-				# print str(len(curWordVec))
+				#tmp = np.float64(np.exp(np.linalg.slogdet(mixtureCovs[curTopic])[1]))
+				#print tmp
+
+				#a = float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*(tmp+0.000001)))
+				#print "a: " + str(a)
+				#print "shape a: " + str(a.shape)
 				# print mixtureMeans[curTopic].shape
 				# print (curWordVec - mixtureMeans[curTopic]).shape
 				# print "here"
 				#b = (curWordVec - mixtureMeans[curTopic])
 				#c = np.linalg.inv(mixtureCovs[curTopic])
 				#d = (curWordVec - mixtureMeans[curTopic])
-				# print "b: " + str(b)
-				# print "c: " + str(c)
-				# print "d: " + str(d)
-				# print str(b.shape)
-				# print str(c.shape)
-				# print str(d.shape)
+				#print "b: " + str(b)
+				#print "c: " + str(c)
+				#print "d: " + str(d)
+				#print str(b.shape)
+				#print str(c.shape)
+				#print str(d.shape)
 				#e = math.exp(-0.5 * np.dot(np.dot((curWordVec - mixtureMeans[curTopic]),np.linalg.inv(mixtureCovs[curTopic])),(curWordVec - mixtureMeans[curTopic])))
+				
+				#if e == 0:
+				#	print "*** UH-OH, underflow!"
+				#print "e: " + str(e)
 				#prob = float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*np.linalg.det(mixtureCovs[curTopic]))) * math.exp(-0.5 * np.dot(np.dot((curWordVec - mixtureMeans[curTopic]),np.linalg.inv(mixtureCovs[curTopic])),(curWordVec - mixtureMeans[curTopic])))
-
+				#return
 				# Create our distribution.
-				for k in topics:
-					print "pwt for: " + str(k) + " = " + str(pwt(curWord, k))
+				#for k in topics:
+					#print "covs: " + str(mixtureCovs[k])
+					#print "shape: " + str(mixtureCovs[k].shape)
+					#print "det: " + str(np.linalg.det(mixtureCovs[k]))	
+					#print "slogdet: " + str(np.linalg.slogdet(mixtureCovs[k]))
+					#print "pwt for: " + str(k) + " = " + str(pwt(curWord, k))
 				dist = [ptd(k, i) * pwt(curWord, k) for k in topics]
 				sdist = sum(dist)
 
@@ -155,7 +177,7 @@ def TopicToVec():
 					if r < 0:
 						break
 				#print str(docs[i])
-				#print " trying to set index " + str(tokenNum) + " to " + str((curWord,k))
+				#print "doc " + str(i) + "; trying to set index " + str(tokenNum) + " to " + str((curWord,k))
 				docs[i][tokenNum] = (curWord,k)
 
 				# increment the counts
@@ -174,13 +196,21 @@ def TopicToVec():
 				#print "cov now: " + str(mixtureCovs[k])
 				#print "mean now: " + str(mixtureMeans[k])
 				tokenNum += 1
-		print "**** likelihood: " + str(loglikelihood)
+		print "**** likelihood for iter " + str(_) + ": " + str(loglikelihood)
 
 				#return
 
-		print "\n2. The probabilites of topics for doc1 (with " + str(len(docs['doc1'])) + " words):"
+		print "\n2. The probabilites of topics for doc17 (with " + str(len(docs['doc17'])) + " words):"
 		for t in topics:
-			print "Topic " + str(t + 1) + ":", ptd(t, 'doc1')
+			print "Topic " + str(t + 1) + ":", ptd(t, 'doc17')
+
+		print "\n2. The probabilites of topics for doc18 (with " + str(len(docs['doc18'])) + " words):"
+		for t in topics:
+			print "Topic " + str(t + 1) + ":", ptd(t, 'doc18')
+
+		print "\n2. The probabilites of topics for doc20 (with " + str(len(docs['doc20'])) + " words):"
+		for t in topics:
+			print "Topic " + str(t + 1) + ":", ptd(t, 'doc20')
 
 		print "\n3. The most probable 15 words for each topic:"
 		for t in topics:
@@ -195,7 +225,7 @@ def TopicToVec():
 			rs = zip([diff(w, t) for w in words], words) # I'm assuming we want unique words.
 			rs.sort(reverse = True)
 			print "Topic " + str(t + 1) + ":", map(lambda r: r[1], rs[:15])			
-		return
+		
 
 
 def PLSA():
@@ -276,13 +306,15 @@ def PLSA():
 		print "Topic " + str(t + 1) + ":", map(lambda r: r[1], rs[:15])
 
 if __name__ == "__main__":
-	iterations = 10
+	iterations = 20
 	alpha = 0.35
-	topics = range(50)
+	topics = range(12)
 
-	input = "../input/docs/news_1000-filtered.txt"
+	input = "../input/docs/news_50-filtered.txt"
 	vecs = "../input/word2vec/GoogleNews_news.txt"
 	
+	print "hello!"
+
 	docs = {}
 	wordVecs = {}
 
