@@ -11,7 +11,7 @@ import sys
 import time
 
 def setRandomTopicsPerWordToken():
-	print "running PLSA with: \n\titerations: "+ str(iterations) + "\n\talpha: " + str(alpha) + "\n\t# topics: " + str(len(topics))
+	print "running with: \n\titerations: "+ str(iterations) + "\n\talpha: " + str(alpha) + "\n\t# topics: " + str(len(topics))
 
 	f = open(input, 'r')
 	for line in f:
@@ -71,13 +71,19 @@ def TopicToVec():
 
 	current_milli_time = lambda: int(round(time.time() * 1000))
 
+	wordCounts = defaultdict(int)
 
 	# gets the words in our corpus
 	for i in docs.keys():
 		for j in docs[i]: # iterates over each (word,topic) pair
 			words.add(j[0])
+			wordCounts[j[0]] += 1
 	print "* loaded " + str(len(words)) + " unique word types"
-
+	sorted_wc = sorted(wordCounts.items(), key=operator.itemgetter(1))
+	print sorted_wc
+	print wordCounts['jacqueline']
+	print wordCounts['landis']
+	print wordCounts['dominican']
 
 	# loads word vecs (only the valid words)
 	f = open(vecs, 'r')
@@ -88,6 +94,7 @@ def TopicToVec():
 
 			if word in words:
 				wordVecs[word] = np.array(map(float, tokens[1:]))
+
 
 
 	# performs PCA to get the 50 most important dimensions
@@ -107,7 +114,6 @@ def TopicToVec():
 		wordVecs[w] = wordVecs[w][0:50] #pcaVecs[wordOrders[w]] TODO: don't leave this
 	pcaVecs = []
 
-
 	# initialize mixture memberships
 	print docs.keys()
 	for i in docs.keys(): # iterates over docs
@@ -123,7 +129,7 @@ def TopicToVec():
 				curVecs = mixtureVecs[j[1]]
 			curVecs.append(np.array(wordVecs[j[0]])) #[np.random.randint(1,30), np.random.randint(30,50), np.random.randint(50,70)]
 			mixtureVecs[j[1]] = curVecs
-
+			
 	print "# words in docs: " + str(len(words))
 	# remove unnecessary wordVecs (ones not used in the doc)
 	print "loaded " + str(len(wordVecs.keys())) + " word vecs"
@@ -171,8 +177,7 @@ def TopicToVec():
 		#print mixtureCovs[k]
 
 		mixtureMeans[k] = np.mean(np.array(mixtureVecs[k]).T, axis=1)
-		print "# means: " + str(len(mixtureMeans[k]))
-		print mixtureMeans[k]
+		print "means: " + str(mixtureMeans[k])
 		#return 
 		#print str(k) + ": " + str(len(mixtureTokens[k]))
 	print "done!"
@@ -186,7 +191,7 @@ def TopicToVec():
 	ptd = lambda t, d: float(ndt[(d, t)] + alpha) / float(ndo[d] + alpha * ntopics)
 
 
-	pwt = lambda w, t: float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*(np.float64(np.exp(np.linalg.slogdet(mixtureCovs[t])[1]))+0.000001))) * math.exp(-0.5 * np.dot(np.dot((wordVecs[w] - mixtureMeans[t]),np.linalg.inv(mixtureCovs[t])),(wordVecs[w] - mixtureMeans[t])))
+	pwt = lambda w, t: float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*(np.float64(np.exp(np.linalg.slogdet(mixtureCovs[t])[1]))))) * math.exp(-0.5 * np.dot(np.dot((wordVecs[w] - mixtureMeans[t]),np.linalg.inv(mixtureCovs[t])),(wordVecs[w] - mixtureMeans[t])))
 	diff = lambda w, t: float(np.linalg.norm(wordVecs[w] - mixtureMeans[t]))
 
 	#pwt = lambda w, t: float(1.0 / math.sqrt(math.pow(2*math.pi,ntopics)*np.linalg.det(mixtureCovs[t]))) # * float(math.exp(-0.5* (np.subtract(x - mixtureVecs[t]).T) * np.linalg.inv(mixtureCovs[t]) * (np.substract(x - mixtureVecs[t]))))
@@ -198,6 +203,11 @@ def TopicToVec():
 		wp = updateWordProbs(k)
 		p_w_t.append(wp)
 
+	for t in topics:
+		topWords = sorted(p_w_t[t].items(), reverse=True, key=operator.itemgetter(1))
+		print "Topic " + str(t) + ":" + str(topWords[0:20])
+
+	exit(1)
 
 	for _ in range(iterations):
 		print "iter: " + str(_)
@@ -332,8 +342,8 @@ def TopicToVec():
 		print "\n3. The most probable 15 words for each topic:"
 
 		for t in topics:
-			topWords = sorted(p_w_t[t].items(), key=operator.itemgetter(1))
-			print "Topic " + str(t) + ":" + topWords[0:20]
+			topWords = sorted(p_w_t[t].items(), reverse=True, key=operator.itemgetter(1))
+			print "Topic " + str(t) + ":" + str(topWords[0:20])
 
 
 
