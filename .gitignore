@@ -1,6 +1,7 @@
 input/word2vec/GoogleNews.txt
 input/word2vec/GoogleNews_Vocab.txt
 input/word2vec/GoogleNews_acl1k.txt
-input/docs/acl*
+input/docs/*
 output/*
 src/out.txt
+src/*csv

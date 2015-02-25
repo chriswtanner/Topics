@@ -45,7 +45,6 @@ ntopics = len(topics) # Number of topics
 ptd = lambda t, d: float(ndt[(d, t)] + alpha) / float(ndo[d] + alpha * ntopics)
 pwt = lambda w, t: float(ntw[(t, w)] + alpha) / float(nto[t] + alpha * nwords)
 
-
 for _ in range(iterations): # Run the algorithm a fixed number of times.
 	loglikelihood = 0 # The current log-likelihood.
 	for i in range(len(documents)): # For each article...
