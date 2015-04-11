@@ -3,6 +3,7 @@ from random import choice, random, randint
 #from math import log
 from sys import argv
 import numpy as np
+import scipy as sp
 from sklearn.decomposition import PCA
 import operator
 import math
@@ -13,6 +14,7 @@ import plotly.plotly as py
 from plotly.graph_objs import *
 
 # sets the valid words (words which appear in corpus and have word vecs)
+# Vetted
 def setValidWords():
 
 	global wordPadding
@@ -49,7 +51,7 @@ def setValidWords():
 	print "\tloaded " + str(len(wordVecs.keys())) + " wordvecs"
 	for w in wordVecs.keys():
 		if w not in words:
-			print "**** ERROR, somehow, word vec for a word that's not in our corpus"
+			print "**** ERROR, somehow we loaded a wordvec for a word that's not in our corpus"
 			exit(1)
 	f.close()
 
@@ -67,6 +69,7 @@ def setValidWords():
 		exit(1)
 
 	# performs PCA to get the 50 most important dimensions
+	print "shrinking dims to: " + str(reducedDim)
 	pcaVecs = []
 	wordOrders = {}
 	i=0
@@ -82,167 +85,12 @@ def setValidWords():
 		wordVecs[w] = wordVecs[w][0:reducedDim] #pcaVecs[wordOrders[w]] TODO: don't leave this
 	pcaVecs = []
 
-def setTopicPerWordTokenViaRandomCentroids():
-	validWords = [] # same as 'words' but is a list because we need to be able to index it for k-means
+# Vetted
+def setRandomTopicsPerWordToken():
 
-	for w in words:
-		validWords.append(w)
+	global docs
 
-	# randomly picks k-centroids
-	centroids = {}
-	print "nto" + str(ntopics)
-	for i in range(ntopics):
-		randWord = validWords[randint(0,len(validWords)-1)]
-		print "picking rand word: " + str(randWord)
-		centroids[i] = wordVecs[randWord]
-		print centroids[i]
-
-	f = open(input, 'r')
-	topicChoices = defaultdict(lambda: 0)
-	for line in f:
-		tokens = line.strip().split(" ")
-		if (len(tokens) > 0):
-			docName = tokens[0]
-			wordTopicPairs = []
-
-			for token in tokens[2:]:
-
-
-				if token in words:
-					#print "word: " + str(token)
-					topicProbs = {}
-					tmp = []
-					curVec = wordVecs[token]
-					for k in range(ntopics):
-						x = getEuclideanDistance(wordVecs[token],centroids[k])
-						tmp.append(x)
-						topicProbs[k] = x
-
-					maxX = np.max(tmp)
-					minX = np.min(tmp)
-					rangeX = maxX - minX
-
-					dist = []
-					for k in range(ntopics):
-
-						prob = float(1.1 - (topicProbs[k] - minX) / rangeX)
-						dist.append(prob)
-
-					sdist = sum(dist)
-					#print "dist: " + str(dist)
-					# Normalize our distribution.
-					ndist = map(lambda t: float(t) / sdist, dist)
-
-					#print "ndist: " + str(ndist)
-					r = random()
-					for k in range(len(ndist)):
-						r -= ndist[k]
-						if r < 0:
-							break
-					
-					topicChoices[k] += 1
-					wordTopicPairs.append((token, k))
-			
-			docs[docName] = wordTopicPairs
-	f.close()
-	print "topicChoices: " + str(topicChoices)
-
-
-def setTopicPerWordTokenViaKMeans():
-
-	validWords = [] # same as 'words' but is a list because we need to be able to index it for k-means
-
-	for w in words:
-		validWords.append(w)
-
-	# randomly picks k-centroids
-	centroids = {}
-	print "nto" + str(ntopics)
-	for i in range(ntopics):
-		randWord = validWords[randint(0,len(validWords)-1)]
-		print "picking rand word: " + str(randWord)
-		centroids[i] = wordVecs[randWord]
-		print centroids[i]
-
-	# performs k-means
-	wordToTopics = defaultdict(lambda: -1)
-
-	madeChange = True
-	i = 0
-	while madeChange and i < maxKMeansIterations:
-		madeChange = False
-		
-		print "k-means iteration: " + str(i)
-
-		# assigns each word to its closest k-mean centroid
-		for w in words:
-			curAssignment = wordToTopics[w]
-
-			# find closest k-means centroid
-			bestEuc = 999999
-			bestTop = -1
-			for k in range(ntopics):
-				curEuc = getCosSim(wordVecs[w], centroids[k])
-				if curEuc < bestEuc:
-					bestEuc = curEuc
-					bestTop = k
-
-			if bestTop != curAssignment:
-				madeChange = True
-
-				wordToTopics[w] = bestTop
-				if w in topicToWords[curAssignment]:
-					#print "remove len was " + str(len(topicToWords[curAssignment]))
-					topicToWords[curAssignment].remove(w)
-					#print "remove len now " + str(len(topicToWords[curAssignment]))
-				#print "len was " + str(len(topicToWords[bestTop]))
-				topicToWords[bestTop].append(w)
-				#print "len now: " + str(len(topicToWords[bestTop]))
-
-		# update the k-means centroids
-		if madeChange:
-			for k in range(ntopics):
-				tmpvecs = []
-				for w in topicToWords[k]:
-					tmpvecs.append(np.array(wordVecs[w]))
-				print len(tmpvecs)
-				centNew = np.mean(np.array(tmpvecs).T, axis=1)
-				centroids[k] = centNew
-				#print len(centNew)
-				#print centNew
-
-		i += 1
-
-	# end k-means initialization;
-	# let's construct the mixtures and cov's
-	# calculates initial covs and means for each k-mixtures
-	print "* calculating initial cov matrix and mean vectors for each of the k mixtures..."
-	for k in range(ntopics):
-
-		tmpvecs = []
-		for w in topicToWords[k]:
-			tmpvecs.append(np.array(wordVecs[w]))
-
-		x = np.array(tmpvecs).T
-
-		mixtureCovs[k] = np.cov(x)
-		print "# cov length" + str(len(mixtureCovs[k]))
-		#print "dimension of cov[0]: " + str(len(mixtureCovs[k][0]))
-		#print "cov shape: " + str(mixtureCovs[k].shape)
-		#print mixtureCovs[k]
-	
-		mixtureMeans[k] = np.mean(np.array(x), axis=1)
-		#print "means: " + str(mixtureMeans[k])
-		#return 
-		#print str(k) + ": " + str(len(mixtureTokens[k]))
-
-	# initializes the p(w|z) normalized probs; we only update each topic's probs once we update the other memberships
-	for k in range(ntopics):
-		print "* init'ing p(w|z) for mixture " + str(k)
-		wp = updateWordProbs(k)
-		p_w_t[k] = wp
-
-	# reads words; determines the mixture it belongs to, probabilistically
+	print "* randomly assigning an initial topic to each word"
 	f = open(input, 'r')
 	for line in f:
 		tokens = line.strip().split(" ")
@@ -251,60 +99,13 @@ def setTopicPerWordTokenViaKMeans():
 			wordTopicPairs = []
 			for token in tokens[2:]:
 				if token in words:
-
-					# determines the mixture it belongs to, probabilistically
-					dist = [p_w_t[k][token] for k in topics]
-					#print "dist: " + str(dist)
-					sdist = sum(dist)
-					# Normalize our distribution.
-					ndist = map(lambda t: float(t) / sdist, dist)
-
-
-					# TODO: this affects the padding
-					# #print "ndist: " + str(ndist)
-					# blah = []
-					# for di in ndist:
-					# 	blah.append(float(1.0/ntopics) + di)
-
-					# sdist = sum(blah) 
-					# ndist = map(lambda t: float(t) / sdist, blah)
-
-					#print "ndist2: " + str(ndist)
-					r = random()
-					for k in range(len(ndist)):
-						r -= ndist[k]
-						if r < 0:
-							break
-					print "word " + str(token) + " was " + str(wordToTopics[token]) + " but now " + str(k)
-					wordTopicPairs.append((token, k))
+					wordTopicPairs.append((token, choice(topics)))
+				else:
+					print "**** " + str(token) + " not found!"					
 			docs[docName] = wordTopicPairs
 	f.close()
+	print "* done"
 
-	print "size of wordvecs: " + str(len(wordVecs))
-
-	# prints closest words to each mean
-	for k in range(ntopics):
-		wordDists = {}
-		for w in topicToWords[k]:
-			#print "wvec: " + str(wordVecs[w])
-			#print "cent: " + str(centroids[k])
-			curEuc = getCosSim(wordVecs[w], centroids[k])
-			wordDists[w] = curEuc
-
-		sorted_words = sorted(wordDists.items(), key=operator.itemgetter(1))
-		print "words closes to: " + str(k)
-		for i in range(20):
-			print str(sorted_words[i])
-
-
-		sorted_words = sorted(p_w_t[k].items(), reverse=True, key=operator.itemgetter(1))
-		print "words most probable from density for: " + str(k)
-		for i in range(20):
-			print str(sorted_words[i])
-
-
-	print "done!"
-	#exit(1)
 
 # requires topicToWords[] to have been set, for these are the only words we'll consider printing
 # reqires p_w_t to have been updated
@@ -330,24 +131,7 @@ def getTopicalWords(k):
 
 	return printList
 
-def setRandomTopicsPerWordToken():
 
-	global docs
-
-	print "* randomly assigning an initial topic to each word"
-	f = open(input, 'r')
-	for line in f:
-		tokens = line.strip().split(" ")
-		if (len(tokens) > 0):
-			docName = tokens[0]
-			wordTopicPairs = []
-			for token in tokens[2:]:
-				if token in words:
-					wordTopicPairs.append((token, choice(topics)))
-				else:
-					print "**** " + str(token) + " not found!"					
-			docs[docName] = wordTopicPairs
-	f.close()
 
 def removearray(L,arr):
     ind = 0
@@ -526,236 +310,8 @@ def updateWordProbs(k):
 	
 
 
-def TopicToVecFast():
-
-	global wordsToPrint
-	global mixtureVecs
-	global mixtureMeans
-	global mixtureCovs
-	global topicToWords
-	global p_w_t
-
-	print "* running TopicToVecFast"
-	current_milli_time = lambda: int(round(time.time() * 1000))
-	print "\tloaded " + str(len(words)) + " unique word types and " + str(len(wordVecs)) + " wordvecs"
-	
-	print "\tword padding: " + str(wordPadding)
-	
-	fout = open('t2v_topicLikelihoods.csv', 'w')
-	for w in wordsToPrint:
-		fout.write("," + w)
-	fout.write('\n')
-
-	# initialize mixture memberships
-	print docs.keys()
-	for i in docs.keys(): # iterates over docs
-
-		print "# words in current doc: " + str(len(docs[i]))
-		#print i
-		for j in docs[i]: # iterates over each (word,topic) pair
-
-			curWord = j[0]
-			curTopic = j[1]
-	
-			ndt[(i,curTopic)] +=1
-			ndo[i] += 1
-
-			topicToWords[curTopic].append(curWord) # append to topic's words
-
-			curVecs = []
-			if curTopic in mixtureVecs.keys():
-				curVecs = mixtureVecs[curTopic]
-			curVecs.append(np.array(wordVecs[curWord])) #[np.random.randint(1,30), np.random.randint(30,50), np.random.randint(50,70)]
-			mixtureVecs[curTopic] = curVecs
-	
-	for k in mixtureVecs.keys():
-		print "top " + str(k) + " has " + str(len(mixtureVecs[k])) + " vecs and " + str(len(topicToWords[k])) + " topicToWords items"	
-
-	print "# words in docs: " + str(len(words))
-
-	# calculates initial covs and means for each k-mixtures
-	print "* calculating initial cov matrix and mean vectors for each of the k mixtures..."
-	for k in range(len(topics)):
-		x = np.array(mixtureVecs[k]).T
-		mixtureCovs[k] = np.cov(x)
-		print "# cov " + str(len(mixtureCovs[k]))
-		print "dimension of cov[" + str(k) + "]: " + str(len(mixtureCovs[k][0]))
-		print "cov shape: " + str(mixtureCovs[k].shape)
-		#print mixtureCovs[k]
-
-		mixtureMeans[k] = np.mean(x, axis=1)
-		print "mixtureMeans[" + str(k) + "]: " + str(mixtureMeans[k])
-		#return 
-		#print str(k) + ": " + str(len(mixtureTokens[k]))
-	print "done!"
-
-	nwords = len(words)
-	ntopics = len(topicToWords.keys())
-
-	print "# topics: " + str(ntopics)
-
-	# Functions for computing P(t,d) and P(w,t)
-	ptd = lambda t, d: float(ndt[(d, t)] + alpha) / float(ndo[d] + alpha*ntopics)
-
-	# initializes the p(w|z) normalized probs; we only update each topic's probs once we update the other memberships
-	for k in range(ntopics):
-		print "* init'ing p(w|z) for mixture " + str(k)
-		wp = updateWordProbs(k)
-		#print "wp: " + str(wp)
-		p_w_t[k] = wp
-
-	for t in topics:
-		topWords = getTopicalWords(t)
-		print "topic " + str(t) + "; most probable words: " + str(topWords)
-
-	#exit(1)
-
-	for _ in range(iterations):
-		print "iter: " + str(_)
-		loglikelihood = 0
-
-		for k in range(ntopics):
-			print "mixturevecs[" + str(k) + "] has: " + str(len(mixtureVecs[k]))
-
-		
-		fout.write(str(_) + "th it:")
-
-		wordTopicDists = {}
-		for gw in wordsToPrint:
-			dist = [ptd(k,docs.keys()[0]) * p_w_t[k][gw] for k in topics]
-			sdist = sum(dist)
-			ndist = map(lambda t: float(t) / sdist, dist)
-			ndist.sort(reverse=True)
-			wordTopicDists[gw] = ndist
-		
-		for it in range(ntopics):
-			for gw in wordsToPrint:
-				fout.write("," + str(wordTopicDists[gw][it]))
-			fout.write("\n")	
 
 
-		for i in docs.keys():
-			print "iter: " + str(_) + "; doc: " + i + " (" + str(len(docs[i])) + " words)"
-			tokenNum=0
-
-			t1a = []
-			t1b = []
-			t2 = []
-			t3 = []
-			t4 = []
-
-			numTopicChanges = 0
-
-			ptds = [ptd(k,i) for k in topics]
-			#print "ptds: " + str(ptds)
-			
-			for j in docs[i]:
-
-				curWord = j[0]
-				curTopic = j[1]
-
-				# remove word's topic assignment from doc and global counts
-				a = current_milli_time()
-				ndt[(i,curTopic)] -= 1
-				ndo[i] -= 1
-				t1a.append(current_milli_time() - a)
-
-				# removes word from topic's lists of words
-				if curWord in topicToWords[curTopic]:
-					#print "topicToWords was of length " + str(len(topicToWords[curTopic]))
-					topicToWords[curTopic].remove(curWord)
-					#print "\tbut now lengtH: " + str(len(topicToWords[curTopic]))
-
-				curWordVec = wordVecs[curWord]
-
-				a = current_milli_time()
-				dist = [ptds[k] * p_w_t[k][curWord] for k in topics]
-				sdist = sum(dist)
-
-				wps = [p_w_t[k][curWord] for k in topics]
-				numVoid = 0
-				for w_ in wps:
-					if w_ == 0:
-						numVoid +=1
-				if numVoid > 6:
-					print "we had " + str(wps)
-					#exit(1)
-				loglikelihood += math.log(sum(dist))
-
-				# Normalize our distribution.
-				ndist = map(lambda t: float(t) / sdist, dist)
-
-				ndist.sort(reverse=True)
-				#print "ndist: " + str(ndist)
-				r = random()
-				#print "rand: " + str(r)
-				tn = 0
-				for k in range(len(ndist)):
-					r -= ndist[k]
-					if r < 0:
-						break
-					tn += 1
-
-				t2.append(current_milli_time() - a)
-
-				#print "ndist: " + str(ndist) + " and we chose " + str(k) + " which was our " + str(tn) + " ordered topic"
-
-				docs[i][tokenNum] = (curWord,k)
-
-				# increment the counts
-				ndt[(i, k)] += 1
-				ndo[i] += 1
-
-				if curTopic != k:
-					#print "topic changed from " + str(curTopic) + " to " + str(k)
-					numTopicChanges += 1
-
-				# adds word to topic's list of words
-				topicToWords[k].append(curWord)
-
-				tokenNum += 1
-
-			# done w/ all words in the current doc
-			#print str(numTopicChanges) + " out of " + str(len(docs[i])) + " words changed topics"
-
-			# updates topics
-			for k in range(ntopics):
-				mixtureVecs[k] = []
-				#print "updating topic " + str(k) + "; size should be 0: " + str(len(mixtureVecs[k]))
-				for w in topicToWords[k]:
-					mixtureVecs[k].append(wordVecs[w])
-
-				#print "** updating topic " + str(k) + "; size now: " + str(len(mixtureVecs[k]))
-
-				x = np.array(mixtureVecs[k]).T
-				mixtureCovs[k] = np.cov(x)
-				mixtureMeans[k] = np.mean(x, axis=1)
-
-				wp = updateWordProbs(k)
-				p_w_t[k] = wp
-			#exit(1)
-
-		# done w/ all docs for the current iteration
-		print "\n** The probabilites of topics for doc8 (with " + str(len(docs['doc8'])) + " words):"
-		for t in topics:
-			print "Topic " + str(t) + ":", ptd(t, 'doc8')
-
-		print "\n2. The probabilites of topics for doc17 (with " + str(len(docs['doc17'])) + " words):"
-		for t in topics:
-			print "Topic " + str(t) + ":", ptd(t, 'doc17')
-
-		print "\n2. The probabilites of topics for doc18 (with " + str(len(docs['doc18'])) + " words):"
-		for t in topics:
-			print "Topic " + str(t) + ":", ptd(t, 'doc18')
-		print "\n2. The probabilites of topics for doc20 (with " + str(len(docs['doc20'])) + " words):"
-		for t in topics:
-			print "Topic " + str(t) + ":", ptd(t, 'doc20')
-		for t in topics:
-			topWords = getTopicalWords(t)
-			print "topic " + str(t) + "; most probable words: " + str(topWords)
-		print "**** likelihood for iter " + str(_) + ": " + str(loglikelihood)
-		#exit(1)
-	fout.close()
 def TopicToVec():
 
 	current_milli_time = lambda: int(round(time.time() * 1000))
@@ -1106,10 +662,31 @@ def makeHeatPlot():
 	fig = Figure(data=data, layout=layout)
 	plot_url = py.plot(fig, filename=heatout)
 
+def printWordToTopicCounts():
+
+	wordToTopics = defaultdict(lambda : defaultdict(int))
+	for i in docs.keys(): # iterates over docs
+		for j in docs[i]: # iterates over each (word,topic) pair
+			w = j[0]
+			z = j[1]
+			if w in wordsToPrint:
+				wordToTopics[w][z] += 1
+
+	for w in wordsToPrint:
+		print "word " + str(w)
+		topWords = sorted(wordToTopics[w].items(), reverse=True, key=operator.itemgetter(1))
+		count = 0
+		for i in topWords:
+			count += i[1]
+		print "count: " + str(count)
+		print topWords
+
+
+# Vetted
 def PLSA():
 
 	global wordsToPrint
-
+	global reducedDim
 	ntw = defaultdict(lambda: 0)
 	nto = defaultdict(lambda: 0)
 
@@ -1141,12 +718,12 @@ def PLSA():
 		print "iter: " + str(_)
 		loglikelihood = 0
 
+		# prints select words' topic probabilities (i.e., P(W|Z))
 		if _ == 0 or _ == 6:
 			fout.write(str(_) + "th it:")
-
 			wordTopicDists = {}
 			for gw in wordsToPrint:
-				dist = [ptd(k, i) * pwt(gw, k) for k in topics]
+				dist = [pwt(gw, k) for k in topics]
 				sdist = sum(dist)
 				ndist = map(lambda t: float(t) / sdist, dist)
 				ndist.sort(reverse=True)
@@ -1193,6 +770,7 @@ def PLSA():
 				#print "picked " + str(k)
 				x += 1
 
+		# done going through all docs for the given iteration
 		print "\n** The probabilites of topics for doc8 (with " + str(len(docs['doc8'])) + " words):"
 		for t in topics:
 			print "Topic " + str(t) + ":", ptd(t, 'doc8')
@@ -1217,10 +795,42 @@ def PLSA():
 
 		print "**** likelihood for iter " + str(_) + ": " + str(loglikelihood)
 	fout.close()
-	#print ndt[('doc13',0)]
-	#print ndo['doc13']
-	#print ntw[(0,'africa')]
-	#print nto[0]
+
+	for t in topics:
+	# My poor man's argmaxn (argmax for the top n items)...
+		rs = zip([pwt(w, t) for w in words], words) # I'm assuming we want unique words.
+		rs.sort(reverse = True)
+		topwords = map(lambda r: r[1], rs[:min(len(rs),nbestwords)])
+
+		# constructs the weighted and unweighted mean vectors for the 'topwords' (which is a specified length)
+		sumvec = np.zeros(reducedDim)
+		sumwvec = np.zeros(reducedDim)
+		for w in topwords:
+			sumwvec = np.add(sumwvec, pwt(w,t)*wordVecs[w])
+			sumvec = np.add(sumvec, wordVecs[w])
+			#print "adding " + str(wordVecs[w])
+		#print sumvec
+
+		# finds closest WEIGHTED word2vec
+		bestWW = ""
+		minW = 9999999
+		for w in wordVecs:
+			curCS = sp.spatial.distance.cosine(wordVecs[w], sumwvec)
+			if curCS < minW:
+				minW = curCS
+				bestWW = w
+
+		bestW = ""
+		minW = 9999999
+		for w in wordVecs:
+			curCS = sp.spatial.distance.cosine(wordVecs[w], sumvec)
+			if curCS < minW:
+				minW = curCS
+				bestW = w
+		print "Topic " + str(t) + ":\n---------"
+		print "closest word2vec (unweighted): " + str(bestW)
+		print "closest word2vec (weighted): " + str(bestWW)
+		#print "Top N per P(W|Z): " + str(topwords)
 
 
 
@@ -1228,58 +838,17 @@ if __name__ == "__main__":
 	iterations = 15
 	alpha = 0.35
 	updateProb = 1
-	topics = range(20)
-	reducedDim = 50
+	topics = range(15)
+	reducedDim = 300
 	maxKMeansIterations = 5
 	wordPadding = 0
+	nbestwords = 9999999 # how many words per topic to base our mean vector on
 
-	input = "../input/docs/news_500-filtered.txt"
+	input = "../input/docs/news_1000-filtered.txt"
 	vecs = "../input/word2vec/GoogleNews_news.txt"
 	heatout = "heatmap_plsa_" + str(len(topics)) + "norm."
 
 	wordsToPrint = ['america', 'bank', 'durning', 'time', 'bill']
-
-	# b = defaultdict(np.array)
-	# b1 = np.array([4,2.6,0.6, 1])
-	# b2 = np.array([4.2,2.5,0.59, 2])
-	# b3 = np.array([4.5,2,4.58, 1])
-	# b4 = np.array([4.8,2.3,0.62, 3])
-	# b5 = np.array([4.9,2.2,0.63, 1])
-	
-	# c = []
-	# c.append(np.array(b1))
-	# c.append(np.array(b2))
-	# c.append(np.array(b3))
-	# c.append(np.array(b4))
-	# c.append(np.array(b5))
-
-	# x = np.array(c).T
-	# print "x " + str(x.shape)
-	# print "x: " + str(x)
-
-	# mc = np.cov(x)*100000000000000000
-	# first = mc[0][0]
-	# scale = float(1.0/first)
-	# #if abs(first) >= 1:
-	# #	print "first is greater than 1"
-	# #	scale = 
-
-	# print "mc: " + str(mc)
-	# print "first: " + str(first)
-	# print "scale: " + str(scale)
-	# print "scaled mc: " + str(mc * scale)
-
-	# det = np.linalg.det(mc)
-
-	# #print "mc * 10: " + str(mc * 10)
-	# print "det: " + str(det)
-	# #print "log(det): " + str(math.log(det))
-
-	# det2 = math.log(np.linalg.det(mc * scale)) - math.log(math.pow(scale,4))
-	# print "e^log(scaled*det): " + str(math.exp(det2))
-
-	# invv = np.linalg.inv(mc)
-	# print "inv: " + str(invv)
 	
 	## GLOBAL VARIABLES ##
 	docs = {}
@@ -1291,7 +860,7 @@ if __name__ == "__main__":
 	# represents the k-mixtures
 	ndt = defaultdict(lambda: 0)
 	ndo = defaultdict(lambda: 0)
-	#mixtureTokens = defaultdict(list)
+
 	mixtureVecs = defaultdict(np.array)
 	mixtureCovs = {}
 	mixtureMeans = {}
@@ -1300,39 +869,17 @@ if __name__ == "__main__":
 	print "running with: \n\titerations: "+ str(iterations) + "\n\talpha: " + str(alpha) + "\n\t# topics: " + str(len(topics))
 
 	setValidWords()
+
 	# initializes each word token to a randomly chosen topic
 	setRandomTopicsPerWordToken()
-	#setTopicPerWordTokenViaRandomCentroids()
-	#exit(1)
+
+	# runs PLSA
 	PLSA()
 
-	#makeHeatPlot()
-	# runs k-means (K = # topics) on word types, then probabilistically assigns each word token to a topic based on this
-	#setTopicPerWordTokenViaKMeans()
-	#TopicToVecFast()
-	#exit(1)
-	# runs PLSA
+	#printTopicVecs()
+	# prints topic counts for each of the 'good words' (i.e., wordsToPrint[])
+	#printWordToTopicCounts()
 
 	# run TopicToVec
 	#TopicToVec()
-
-
-		# a = np.array([1,2])
-	# print a.shape
-
-
-	# mc = np.cov(x)
-	# print "mc shape: " + str(mc.shape)
-	# print "mc: " + str(mc)
-
-	# print np.linalg.det(mc)
-	# a = np.linalg.slogdet(mc)[1]
-	# b = np.exp(a)
-	# print b
-	#invv = np.linalg.inv(mc)
-	#print "inv: " + str(invv)
-	# n1 = np.dot(a.T,invv)
-	# print n1.shape
-	# print n1
-	#exit(1) 
 
